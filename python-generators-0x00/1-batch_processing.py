@@ -19,39 +19,45 @@ def stream_users_in_batches(batch_size):
         # Establish database connection
         connection = mysql.connector.connect(
             host='localhost',
-            user='root',
-            password='',
+            user='root',  # Replace with your MySQL username
+            password='',  # Replace with your MySQL password
             database='ALX_prodev'
         )
         
         if connection.is_connected():
+            # Create a server-side cursor
             cursor = connection.cursor(buffered=True)
+            
+            # Execute query to fetch all users
             cursor.execute("SELECT user_id, name, email, age FROM user_data")
             
-            # Loop 1: Main batch fetching loop
+            # Loop 1: Fetch batches until no more data
             while True:
+                # Fetch a batch of rows
                 rows = cursor.fetchmany(batch_size)
                 if not rows:
                     break
                 
+                # Convert batch to list of dictionaries
                 batch = []
-                # Loop 2: Convert rows to dictionaries
+                # Loop 2: Process rows in current batch
                 for row in rows:
-                    batch.append({
+                    user_dict = {
                         'user_id': row[0],
                         'name': row[1],
                         'email': row[2],
                         'age': row[3]
-                    })
+                    }
+                    batch.append(user_dict)
                 
                 yield batch
     
     except Error as e:
         print(f"Database error: {e}")
-        # Yield an empty batch on error
-        yield []
+        # No return statement - just let the generator finish naturally
     
     finally:
+        # Clean up resources
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
@@ -59,23 +65,18 @@ def stream_users_in_batches(batch_size):
 
 def batch_processing(batch_size):
     """
-    Generator function that processes batches and yields users over age 25.
+    Generator function that processes batches of users and yields users over age 25.
     
     Args:
         batch_size (int): Number of rows to process per batch
         
     Yields:
-        dict: User data for users over age 25
+        dict: User dictionaries for users over age 25
     """
-    batch_count = 0
-    users_yielded = 0
-    
-    # Loop 3: Iterate through batches from generator
+    # Loop 3: Iterate through batches from the generator
     for batch in stream_users_in_batches(batch_size):
-        batch_count += 1
-        
-        # Process each user in current batch
+        # Process each user in the current batch
         for user in batch:
+            # Filter users over age 25 and yield them
             if user['age'] > 25:
-                users_yielded += 1
                 yield user
