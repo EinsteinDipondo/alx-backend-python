@@ -53,7 +53,7 @@ def stream_users_in_batches(batch_size):
                 yield batch
     
     except Error as e:
-        print(f"Database error: {e}", file=sys.stderr)
+        print(f"Database error: {e}")
         yield []
     
     finally:
@@ -65,15 +65,18 @@ def stream_users_in_batches(batch_size):
 
 def batch_processing(batch_size):
     """
-    Processes batches of users and filters those over age 25.
+    Generator function that processes batches of users and yields users over age 25.
     
     Args:
         batch_size (int): Number of rows to process per batch
+        
+    Yields:
+        dict: User dictionaries for users over age 25
     """
     # Loop 3: Iterate through batches from the generator
     for batch in stream_users_in_batches(batch_size):
         # Process each user in the current batch
         for user in batch:
-            # Filter users over age 25
+            # Filter users over age 25 and yield them
             if user['age'] > 25:
-                print(user)
+                yield user
