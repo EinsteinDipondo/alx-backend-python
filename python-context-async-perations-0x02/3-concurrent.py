@@ -1,138 +1,120 @@
 import asyncio
-import sqlite3
-import aiosqlite # Assuming this library is installed and available
+import aiosqlite
 from datetime import datetime
-import time
 
-# --- Configuration ---
-DB_FILE = 'users.db'
+async def async_fetch_users():
+    """
+    Asynchronously fetch all users from the database
+    """
+    print("Starting to fetch all users...")
+    async with aiosqlite.connect('users.db') as db:
+        async with db.execute("SELECT * FROM users") as cursor:
+            users = await cursor.fetchall()
+            print(f"Fetched {len(users)} users")
+            return users
 
-# --- 1. Synchronous Database Setup ---
-def setup_database():
-    """Initializes the database and populates the users table with age data."""
-    try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        
-        cursor.execute("DROP TABLE IF EXISTS users")
-        cursor.execute("""
-            CREATE TABLE users (
-                id INTEGER PRIMARY KEY,
+async def async_fetch_older_users():
+    """
+    Asynchronously fetch users older than 40 from the database
+    """
+    print("Starting to fetch users older than 40...")
+    async with aiosqlite.connect('users.db') as db:
+        async with db.execute("SELECT * FROM users WHERE age > 40") as cursor:
+            users = await cursor.fetchall()
+            print(f"Fetched {len(users)} users older than 40")
+            return users
+
+async def initialize_database():
+    """
+    Initialize the database with sample data for testing
+    """
+    async with aiosqlite.connect('users.db') as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
                 age INTEGER,
-                joined_at TEXT
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
         
-        # Insert sample data, including users older than 40
-        data = [
-            ('Young Alice', 22, datetime.now().isoformat()),
-            ('Mature Bob', 35, datetime.now().isoformat()),
-            ('Experienced Charlie', 41, datetime.now().isoformat()), # Older than 40
-            ('Veteran David', 55, datetime.now().isoformat()),       # Older than 40
-            ('Fresh Eve', 19, datetime.now().isoformat()),
+        # Insert sample data
+        sample_users = [
+            ('Alice Johnson', 'alice@example.com', 28),
+            ('Bob Smith', 'bob@example.com', 45),
+            ('Charlie Brown', 'charlie@example.com', 35),
+            ('Diana Prince', 'diana@example.com', 52),
+            ('Evan Wright', 'evan@example.com', 38),
+            ('Fiona Gallagher', 'fiona@example.com', 47)
         ]
         
-        cursor.executemany("INSERT INTO users (name, age, joined_at) VALUES (?, ?, ?)", data)
-        
-        conn.commit()
-        conn.close()
-        print(f"[SETUP] Database '{DB_FILE}' initialized with test data.")
-    except Exception as e:
-        print(f"[SETUP ERROR] Could not initialize database: {e}")
-
-# =============================================================
-# 🎯 SOLUTION: Asynchronous Query Functions
-# =============================================================
-
-async def async_fetch_users(conn):
-    """
-    Asynchronous function to fetch all users.
-    Takes an open aiosqlite connection object.
-    """
-    start_time = time.time()
-    await asyncio.sleep(0.1) # Simulate some network/processing delay
-    
-    print(f"\n[QUERY_1] Starting fetch_all_users...")
-    
-    async with conn.cursor() as cursor:
-        await cursor.execute("SELECT name, age FROM users")
-        results = await cursor.fetchall()
-    
-    duration = (time.time() - start_time) * 1000
-    print(f"[QUERY_1] Completed fetch_all_users in {duration:.2f}ms.")
-    return "All Users", results
-
-async def async_fetch_older_users(conn):
-    """
-    Asynchronous function to fetch users older than 40.
-    Takes an open aiosqlite connection object.
-    """
-    start_time = time.time()
-    await asyncio.sleep(0.2) # Simulate slightly longer network/processing delay
-    
-    print(f"\n[QUERY_2] Starting fetch_older_users...")
-    
-    async with conn.cursor() as cursor:
-        await cursor.execute("SELECT name, age FROM users WHERE age > ?", (40,))
-        results = await cursor.fetchall()
-        
-    duration = (time.time() - start_time) * 1000
-    print(f"[QUERY_2] Completed fetch_older_users in {duration:.2f}ms.")
-    return "Users > 40", results
+        await db.executemany(
+            "INSERT OR IGNORE INTO users (name, email, age) VALUES (?, ?, ?)",
+            sample_users
+        )
+        await db.commit()
+        print("Database initialized with sample data")
 
 async def fetch_concurrently():
     """
-    The main asynchronous runner that executes multiple queries concurrently
-    using a single aiosqlite connection context manager.
+    Execute both database queries concurrently using asyncio.gather
     """
-    print(f"\n[CONCURRENT] Starting concurrent query execution...")
+    print("Starting concurrent database queries...")
+    start_time = datetime.now()
     
-    total_start_time = time.time()
+    # Execute both queries concurrently
+    results = await asyncio.gather(
+        async_fetch_users(),
+        async_fetch_older_users()
+    )
     
-    # Use the aiosqlite context manager for the connection
-    async with aiosqlite.connect(DB_FILE) as db:
-        
-        # Use asyncio.gather to run both fetch functions simultaneously
-        # We pass the shared 'db' connection object to both tasks
-        results = await asyncio.gather(
-            async_fetch_users(db),
-            async_fetch_older_users(db)
-        )
-        
-    total_duration = (time.time() - total_start_time) * 1000
-    print(f"\n[CONCURRENT] All queries finished. Total execution time: {total_duration:.2f}ms")
+    end_time = datetime.now()
+    execution_time = (end_time - start_time).total_seconds()
     
-    # Results is a list of tuples: [('All Users', [...]), ('Users > 40', [...])]
+    print(f"\nConcurrent execution completed in {execution_time:.2f} seconds")
+    
+    # Unpack results
+    all_users, older_users = results
+    
+    print(f"Total users: {len(all_users)}")
+    print(f"Users older than 40: {len(older_users)}")
+    
     return results
 
-# =============================================================
-# 🚀 Execution
-# =============================================================
-
-if __name__ == '__main__':
-    # 1. Setup synchronous database
-    setup_database()
+async def fetch_sequentially():
+    """
+    Compare with sequential execution to demonstrate performance benefit
+    """
+    print("\n" + "="*50)
+    print("COMPARISON: Sequential execution")
+    print("="*50)
     
-    # 2. Run the asynchronous main function
-    try:
-        final_results = asyncio.run(fetch_concurrently())
-        
-        print("\n" + "="*50)
-        print("Final Consolidated Results:")
-        print("="*50)
-        
-        # Display the results from the concurrent run
-        for title, data in final_results:
-            print(f"\n--- {title} ---")
-            if data:
-                for name, age in data:
-                    print(f"Name: {name:<20} | Age: {age}")
-            else:
-                print("No results found.")
+    start_time = datetime.now()
+    
+    # Execute queries sequentially
+    all_users = await async_fetch_users()
+    older_users = await async_fetch_older_users()
+    
+    end_time = datetime.now()
+    execution_time = (end_time - start_time).total_seconds()
+    
+    print(f"Sequential execution completed in {execution_time:.2f} seconds")
+    
+    return all_users, older_users
 
-    except ImportError:
-        print("\n[ERROR] The 'aiosqlite' library is required but not installed.")
-        print("Please install it: pip install aiosqlite")
-    except Exception as e:
-        print(f"\n[CRITICAL ERROR] An unexpected error occurred during execution: {e}")
+# Main execution
+if __name__ == "__main__":
+    # Initialize database first
+    asyncio.run(initialize_database())
+    
+    print("="*50)
+    print("CONCURRENT ASYNCHRONOUS DATABASE QUERIES")
+    print("="*50)
+    
+    # Run concurrent queries
+    results = asyncio.run(fetch_concurrently())
+    
+    # Run sequential for comparison (optional)
+    # Uncomment to see the performance difference
+    # asyncio.run(fetch_sequentially())
