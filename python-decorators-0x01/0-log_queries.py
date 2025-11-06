@@ -1,10 +1,5 @@
 import sqlite3
 import functools
-import logging
-
-# Set up logging to include timestamps automatically
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 def log_queries(func):
     """Decorator that logs SQL queries before executing them"""
@@ -14,9 +9,9 @@ def log_queries(func):
         query = kwargs.get('query') or (args[0] if args else None)
         
         if query:
-            logger.info(f"Executing SQL query: {query}")
+            print(f"Executing SQL query: {query}")
         else:
-            logger.warning("No query parameter found")
+            print("No query parameter found")
         
         # Execute the original function
         return func(*args, **kwargs)
