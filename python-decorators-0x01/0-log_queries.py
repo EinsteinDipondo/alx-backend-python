@@ -1,17 +1,16 @@
 import sqlite3
 import functools
 
+#### decorator to log SQL queries
 def log_queries(func):
     """Decorator that logs SQL queries before executing them"""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        # Extract query from keyword arguments or first positional argument
-        query = kwargs.get('query') or (args[0] if args else None)
+        # Extract the query from keyword arguments
+        query = kwargs.get('query')
         
-        if query:
-            print(f"Executing SQL query: {query}")
-        else:
-            print("No query parameter found")
+        # Log the SQL query
+        print(f"Executing SQL query: {query}")
         
         # Execute the original function
         return func(*args, **kwargs)
@@ -27,24 +26,5 @@ def fetch_all_users(query):
     conn.close()
     return results
 
-# Example usage
-if __name__ == "__main__":
-    # Create sample database for testing
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            email TEXT
-        )
-    """)
-    # Insert sample data if not exists
-    cursor.execute("INSERT OR IGNORE INTO users (name, email) VALUES ('John Doe', 'john@example.com')")
-    cursor.execute("INSERT OR IGNORE INTO users (name, email) VALUES ('Jane Smith', 'jane@example.com')")
-    conn.commit()
-    conn.close()
-    
-    # Fetch users while logging the query
-    users = fetch_all_users(query="SELECT * FROM users")
-    print(f"Fetched {len(users)} users")
+#### fetch users while logging the query
+users = fetch_all_users(query="SELECT * FROM users")
