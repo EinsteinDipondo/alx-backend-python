@@ -7,6 +7,6 @@ from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include('chats.urls')),  # Add this line for API URLs
-    path('api-auth/', include('rest_framework.urls')),
+    path('api/', include('chats.urls')),  # Include the chats app API URLs
+    path('api-auth/', include('rest_framework.urls')),  # For browsable API auth
 ]
