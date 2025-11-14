@@ -36,8 +36,7 @@ class TestGithubOrgClient(unittest.TestCase):
         # Call the method under test
         client.org()
 
-        # Assertion 1: Check if get_json was called once with the expected URL
-        # We patch 'client.get_json' because that is where it is imported.
+        # Assertion 1: Check if get_json was called once with expected URL
         mock_get_json.assert_called_once_with(test_url)
 
     def test_public_repos_url(self) -> None:
@@ -58,8 +57,7 @@ class TestGithubOrgClient(unittest.TestCase):
             new_callable=PropertyMock,
             return_value=test_payload
         ) as mock_org:
-            # Initialize the client (org_name is irrelevant
-            # since org() is mocked)
+            # Initialize the client
             client = GithubOrgClient("holbertonschool")
 
             # Call the method under test
@@ -106,14 +104,13 @@ class TestGithubOrgClient(unittest.TestCase):
             result_repos = client.public_repos()
 
             # 4. Assertions
-            # Test 1: Check that the result matches the expected list of names
+            # Test 1: Check that the result matches expected list of names
             self.assertEqual(result_repos, expected_repos)
 
             # Test 2: Check that the internal dependency was called once
             mock_repos_url_property.assert_called_once()
 
-            # Test 3: Check that the network call was made once with the
-            # correct URL.
+            # Test 3: Check that the network call was made once
             mock_get_json.assert_called_once_with(mock_repos_url)
 
     @parameterized.expand([
@@ -155,13 +152,13 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """
-        Set up the class by mocking requests.get to return the fixture payloads.
+        Set up the class by mocking requests.get to return fixture payloads.
         """
         # Start patching requests.get
         cls.get_patcher = patch('requests.get')
         cls.mock_get = cls.get_patcher.start()
 
-        # Define the side_effect function to return different payloads based on URL
+        # Define side_effect to return different payloads based on URL
         def side_effect(url):
             class MockResponse:
                 @staticmethod
@@ -187,31 +184,23 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
     def test_public_repos(self):
         """
         Integration test for public_repos method without license filter.
-        Verifies that the method returns the expected repositories from fixtures.
+        Verifies that the method returns the expected repositories.
         """
         # Create client and call the method
         client = GithubOrgClient("google")
-        
-        # Call public_repos without license filter
         repos = client.public_repos()
-        
+
         # Verify the result matches expected_repos from fixtures
         self.assertEqual(repos, self.expected_repos)
 
     def test_public_repos_with_license(self):
         """
-        Integration test for public_repos method with Apache 2.0 license filter.
-        Verifies that the method returns only repositories with Apache 2.0 license.
+        Integration test for public_repos with Apache 2.0 license filter.
+        Verifies that the method returns only Apache 2.0 licensed repos.
         """
         # Create client and call the method with license filter
         client = GithubOrgClient("google")
-        
-        # Call public_repos with Apache 2.0 license filter
         repos = client.public_repos(license="apache-2.0")
-        
+
         # Verify the result matches apache2_repos from fixtures
         self.assertEqual(repos, self.apache2_repos)
-
-
-if __name__ == '__main__':
-    unittest.main()
