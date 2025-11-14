@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 A module providing utility functions, including one for accessing
-values in nested dictionaries and fetching JSON from URLs.
+values in nested dictionaries, fetching JSON from URLs, and memoization.
 """
-from typing import Mapping, Sequence, Any, Dict
+from typing import Mapping, Sequence, Any, Dict, Callable
 import requests
 
 def access_nested_map(nested_map: Mapping, path: Sequence[Any]) -> Any:
@@ -40,3 +40,16 @@ def get_json(url: str) -> Dict:
     response = requests.get(url)
     response.raise_for_status()
     return response.json()
+
+def memoize(func: Callable) -> Callable:
+    """
+    Decorator to memoize a method's result, caching it upon the first call.
+    """
+    attr_name = '_{}'.format(func.__name__)
+
+    def wrapper(self):
+        if not hasattr(self, attr_name):
+            setattr(self, attr_name, func(self))
+        return getattr(self, attr_name)
+
+    return property(wrapper)

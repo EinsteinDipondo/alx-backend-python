@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
 Unit tests for the utility functions in utils.py,
-demonstrating parameterized testing and mocking HTTP calls.
+demonstrating parameterized testing, mocking, and memoization tests.
 """
 import unittest
 from unittest.mock import patch, Mock
 from parameterized import parameterized
 from typing import Union, Dict, Any, Tuple
-from utils import access_nested_map, get_json
+from utils import access_nested_map, get_json, memoize
 
 class TestAccessNestedMap(unittest.TestCase):
     """
@@ -31,7 +31,6 @@ class TestAccessNestedMap(unittest.TestCase):
         Tests that access_nested_map returns the correct value for a given
         nested map and a valid key path.
         """
-        # The body is intentionally kept to one line to satisfy the requirement.
         self.assertEqual(access_nested_map(nested_map, path), expected)
 
 
@@ -52,19 +51,52 @@ class TestGetJson(unittest.TestCase):
         exactly one call to requests.get with the correct URL.
         """
         # 1. Configure the mock object to return the expected payload
-        # Create a Mock response object
         mock_response = Mock()
-        # Set the mock response's .json() method to return test_payload
         mock_response.json.return_value = test_payload
-        
-        # Configure the patched requests.get to return our mock response
         mock_get.return_value = mock_response
 
         # 2. Call the function under test
         result = get_json(test_url)
 
-        # 3. Assertions (required assertions are placed here)
-        # Test 1: Check if the mocked get was called exactly once with the correct URL
+        # 3. Assertions
         mock_get.assert_called_once_with(test_url)
-        # Test 2: Check if the output of get_json matches the expected payload
         self.assertEqual(result, test_payload)
+
+
+class TestMemoize(unittest.TestCase):
+    """
+    Tests the functionality of the utils.memoize decorator, ensuring
+    the decorated property calls its underlying method only once.
+    """
+
+    def test_memoize(self) -> None:
+        """
+        Tests that a_property calls a_method only once when accessed twice.
+        """
+        class TestClass:
+            """Class for testing memoization."""
+            def a_method(self) -> int:
+                """Returns the value 42."""
+                return 42
+
+            @memoize
+            def a_property(self) -> int:
+                """Returns the result of a_method."""
+                return self.a_method()
+
+        # Patch a_method within the scope of TestClass
+        with patch.object(TestClass, 'a_method', return_value=42) as mock_a_method:
+            # Instantiate the class
+            test_instance = TestClass()
+            
+            # Call a_property twice
+            result1 = test_instance.a_property
+            result2 = test_instance.a_property
+
+            # Assertions:
+            # 1. Check if the result is correct
+            self.assertEqual(result1, 42)
+            self.assertEqual(result2, 42)
+            
+            # 2. Check if the underlying method was called only once
+            mock_a_method.assert_called_once()
