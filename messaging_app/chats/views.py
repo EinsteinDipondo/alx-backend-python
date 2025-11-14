@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
@@ -19,6 +19,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
     """
     queryset = Conversation.objects.all()
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['participants__first_name', 'participants__last_name', 'participants__email']
+    ordering_fields = ['created_at', 'updated_at']
+    ordering = ['-created_at']
     
     def get_serializer_class(self):
         """
@@ -35,9 +39,20 @@ class ConversationViewSet(viewsets.ModelViewSet):
         Return conversations where the current user is a participant
         """
         user = self.request.user
-        return Conversation.objects.filter(participants=user).prefetch_related(
+        queryset = Conversation.objects.filter(participants=user).prefetch_related(
             'participants', 'messages', 'messages__sender'
-        ).order_by('-created_at')
+        )
+        
+        # Additional filtering by participant email or name
+        participant_search = self.request.query_params.get('participant', None)
+        if participant_search:
+            queryset = queryset.filter(
+                Q(participants__first_name__icontains=participant_search) |
+                Q(participants__last_name__icontains=participant_search) |
+                Q(participants__email__icontains=participant_search)
+            ).distinct()
+        
+        return queryset
 
     def perform_create(self, serializer):
         """
@@ -65,6 +80,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         
         if current_user_id not in [str(pid) for pid in participant_ids]:
             participant_ids.append(current_user_id)
+            request.data['participant_ids'] = participant_ids
         
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
@@ -146,6 +162,10 @@ class MessageViewSet(viewsets.ModelViewSet):
     queryset = Message.objects.all()
     serializer_class = MessageSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['message_body', 'sender__first_name', 'sender__last_name']
+    ordering_fields = ['sent_at']
+    ordering = ['-sent_at']
 
     def get_serializer_class(self):
         """
@@ -162,9 +182,22 @@ class MessageViewSet(viewsets.ModelViewSet):
         """
         user = self.request.user
         user_conversations = Conversation.objects.filter(participants=user)
-        return Message.objects.filter(
+        
+        queryset = Message.objects.filter(
             conversation__in=user_conversations
-        ).select_related('sender', 'conversation').order_by('-sent_at')
+        ).select_related('sender', 'conversation')
+        
+        # Filter by conversation if provided
+        conversation_id = self.request.query_params.get('conversation', None)
+        if conversation_id:
+            queryset = queryset.filter(conversation__conversation_id=conversation_id)
+        
+        # Filter by sender if provided
+        sender_id = self.request.query_params.get('sender', None)
+        if sender_id:
+            queryset = queryset.filter(sender__user_id=sender_id)
+        
+        return queryset
 
     def perform_create(self, serializer):
         """
@@ -256,6 +289,10 @@ class UserViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['first_name', 'last_name', 'email']
+    ordering_fields = ['first_name', 'last_name', 'created_at']
+    ordering = ['first_name']
 
     def get_queryset(self):
         """
