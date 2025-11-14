@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch, Mock, PropertyMock
 from parameterized import parameterized
 from client import GithubOrgClient
+from typing import List, Dict
 
 
 class TestGithubOrgClient(unittest.TestCase):
@@ -67,3 +68,47 @@ class TestGithubOrgClient(unittest.TestCase):
 
             # Test 2: Check that client.org was called once
             mock_org.assert_called_once()
+
+    @patch('client.get_json')
+    def test_public_repos(self, mock_get_json: Mock) -> None:
+        """
+        Tests that public_repos returns the expected list of repository names,
+        mocking both the network call (get_json) and the internal dependency
+        (repos_url).
+        """
+        # 1. Define the payloads and expected result
+        test_repos_payload: List[Dict] = [
+            {"name": "repo-1", "license": {"key": "mit"}},
+            {"name": "repo-2", "license": {"key": "apache-2.0"}},
+            {"name": "repo-3", "license": None},
+        ]
+        expected_repos: List[str] = ["repo-1", "repo-2", "repo-3"]
+        mock_repos_url: str = (
+            "https://api.github.com/orgs/holbertonschool/repos"
+        )
+
+        # 2. Configure the mocked network call
+        mock_get_json.return_value = test_repos_payload
+
+        # 3. Configure the mocked internal dependency (repos_url)
+        with patch.object(
+            GithubOrgClient,
+            'repos_url',
+            new_callable=PropertyMock,
+            return_value=mock_repos_url
+        ) as mock_repos_url_property:
+            # Initialize the client
+            client = GithubOrgClient("holbertonschool")
+
+            # Call the method under test
+            result_repos = client.public_repos()
+
+            # 4. Assertions
+            # Test 1: Check that the result matches the expected list of names
+            self.assertEqual(result_repos, expected_repos)
+
+            # Test 2: Check that the internal dependency was called once
+            mock_repos_url_property.assert_called_once()
+
+            # Test 3: Check that the network call was made once with the correct URL
+            mock_get_json.assert_called_once_with(mock_repos_url)
