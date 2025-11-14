@@ -114,3 +114,24 @@ class TestGithubOrgClient(unittest.TestCase):
             # Test 3: Check that the network call was made once with the
             # correct URL.
             mock_get_json.assert_called_once_with(mock_repos_url)
+
+    @parameterized.expand([
+        ({"license": {"key": "my_license"}}, "my_license", True),
+        ({"license": {"key": "other_license"}}, "my_license", False),
+        ({"license": {"key": "my_license"}}, "other_license", False),
+        ({}, "my_license", False),
+        ({"license": None}, "my_license", False),
+    ])
+    def test_has_license(
+            self,
+            repo: Dict,
+            license_key: str,
+            expected_result: bool
+    ) -> None:
+        """
+        Tests that GithubOrgClient.has_license returns the expected boolean
+        based on the repository dictionary and license key.
+        """
+        client = GithubOrgClient("irrelevant")
+        result = client.has_license(repo, license_key)
+        self.assertEqual(result, expected_result)
