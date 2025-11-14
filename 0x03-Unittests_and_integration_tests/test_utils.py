@@ -1,34 +1,34 @@
 #!/usr/bin/env python3
 """
-Unit tests for utils module demonstrating unit testing concepts.
+Unit tests for the access_nested_map function in utils.py,
+demonstrating the use of parameterized testing.
 """
-
 import unittest
-from utils import access_nested_map
-
+from parameterized import parameterized
+from typing import Union, Dict, Any, Tuple
+from utils import access_nested_map # Import the function to be tested
 
 class TestAccessNestedMap(unittest.TestCase):
     """
-    Test class for access_nested_map function with parameterized tests.
+    Tests the functionality of the utils.access_nested_map function
+    using various valid inputs.
     """
 
-    def test_access_nested_map(self):
+    @parameterized.expand([
+        # (nested_map, path, expected_result)
+        ({"a": 1}, ("a",), 1),
+        ({"a": {"b": 2}}, ("a",), {"b": 2}),
+        ({"a": {"b": 2}}, ("a", "b"), 2),
+    ])
+    def test_access_nested_map(
+            self,
+            nested_map: Dict,
+            path: Tuple[str, ...],
+            expected: Union[int, Dict[str, Any]]
+        ) -> None:
         """
-        Test access_nested_map returns correct value for valid paths.
-        Uses multiple test cases within one test method.
+        Tests that access_nested_map returns the correct value for a given
+        nested map and a valid key path.
         """
-        # Test case 1: nested_map={"a": 1}, path=("a",)
-        result1 = access_nested_map({"a": 1}, ("a",))
-        self.assertEqual(result1, 1)
-
-        # Test case 2: nested_map={"a": {"b": 2}}, path=("a",)
-        result2 = access_nested_map({"a": {"b": 2}}, ("a",))
-        self.assertEqual(result2, {"b": 2})
-
-        # Test case 3: nested_map={"a": {"b": 2}}, path=("a", "b")
-        result3 = access_nested_map({"a": {"b": 2}}, ("a", "b"))
-        self.assertEqual(result3, 2)
-
-
-if __name__ == '__main__':
-    unittest.main()
+        # The body is intentionally kept to one line to satisfy the requirement.
+        self.assertEqual(access_nested_map(nested_map, path), expected)
