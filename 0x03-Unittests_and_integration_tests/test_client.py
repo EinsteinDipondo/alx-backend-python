@@ -170,8 +170,7 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
                         return cls.org_payload
                     elif url == cls.org_payload['repos_url']:
                         return cls.repos_payload
-                    else:
-                        return None
+                    return {}
 
             return MockResponse()
 
@@ -187,23 +186,29 @@ class TestIntegrationGithubOrgClient(unittest.TestCase):
 
     def test_public_repos(self):
         """
-        Test public_repos method without mocking the internal implementation.
+        Integration test for public_repos method without license filter.
+        Verifies that the method returns the expected repositories from fixtures.
         """
         # Create client and call the method
         client = GithubOrgClient("google")
+        
+        # Call public_repos without license filter
         repos = client.public_repos()
-
+        
         # Verify the result matches expected_repos from fixtures
         self.assertEqual(repos, self.expected_repos)
 
     def test_public_repos_with_license(self):
         """
-        Test public_repos method with a specific license filter.
+        Integration test for public_repos method with Apache 2.0 license filter.
+        Verifies that the method returns only repositories with Apache 2.0 license.
         """
         # Create client and call the method with license filter
         client = GithubOrgClient("google")
+        
+        # Call public_repos with Apache 2.0 license filter
         repos = client.public_repos(license="apache-2.0")
-
+        
         # Verify the result matches apache2_repos from fixtures
         self.assertEqual(repos, self.apache2_repos)
 
