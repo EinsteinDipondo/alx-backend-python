@@ -57,11 +57,12 @@ class TestGithubOrgClient(unittest.TestCase):
             new_callable=PropertyMock,
             return_value=test_payload
         ) as mock_org:
-            # Initialize the client (org_name is irrelevant since org() is mocked)
+            # Initialize the client (org_name is irrelevant
+            # since org() is mocked)
             client = GithubOrgClient("holbertonschool")
 
             # Call the method under test
-            result_url = client.repos_url()
+            result_url = client.repos_url
 
             # Test 1: Check that the result is the expected URL
             self.assertEqual(result_url, expected_repos_url)
@@ -110,5 +111,6 @@ class TestGithubOrgClient(unittest.TestCase):
             # Test 2: Check that the internal dependency was called once
             mock_repos_url_property.assert_called_once()
 
-            # Test 3: Check that the network call was made once with the correct URL
+            # Test 3: Check that the network call was made once with the
+            # correct URL.
             mock_get_json.assert_called_once_with(mock_repos_url)
