@@ -9,29 +9,32 @@ from datetime import datetime, timedelta
 class MessageFilter(filters.FilterSet):
     """
     Filter for messages to retrieve:
-    - Messages with specific users (via conversation participants)
+    - Conversations with specific users (via conversation participants)
     - Messages within a time range
-    - Messages from specific conversations
     """
+    
+    # Filter by conversation ID
     conversation = filters.ModelChoiceFilter(
         field_name='conversation',
         queryset=Conversation.objects.all(),
-        label='Conversation'
+        label='Conversation ID'
     )
     
-    participant = filters.ModelChoiceFilter(
-        field_name='conversation__participants',
+    # Filter by specific user (participant in the conversation)
+    user = filters.ModelChoiceFilter(
+        method='filter_by_user',
         queryset=User.objects.all(),
-        label='Participant User'
+        label='User (participant in conversation)'
     )
     
+    # Filter by sender
     sender = filters.ModelChoiceFilter(
         field_name='sender',
         queryset=User.objects.all(),
         label='Sender'
     )
     
-    # Date range filtering
+    # Time range filtering
     start_date = filters.DateTimeFilter(
         field_name='timestamp', 
         lookup_expr='gte',
@@ -42,6 +45,19 @@ class MessageFilter(filters.FilterSet):
         field_name='timestamp', 
         lookup_expr='lte',
         label='End Date (YYYY-MM-DD HH:MM:SS)'
+    )
+    
+    # Date range (date only, without time)
+    start_date_date = filters.DateFilter(
+        field_name='timestamp', 
+        lookup_expr='gte',
+        label='Start Date (YYYY-MM-DD)'
+    )
+    
+    end_date_date = filters.DateFilter(
+        field_name='timestamp', 
+        lookup_expr='lte',
+        label='End Date (YYYY-MM-DD)'
     )
     
     # Last N days filtering
@@ -69,9 +85,19 @@ class MessageFilter(filters.FilterSet):
         fields = [
             'conversation', 
             'sender', 
-            'participant',
+            'user',
             'is_read'
         ]
+
+    def filter_by_user(self, queryset, name, value):
+        """
+        Filter messages by conversations that include a specific user
+        """
+        if value:
+            # Get conversations that include the specified user
+            conversations_with_user = Conversation.objects.filter(participants=value)
+            return queryset.filter(conversation__in=conversations_with_user)
+        return queryset
 
     def filter_last_days(self, queryset, name, value):
         """
@@ -93,23 +119,34 @@ class MessageFilter(filters.FilterSet):
 
 class ConversationFilter(filters.FilterSet):
     """
-    Filter for conversations
+    Filter for conversations with specific users
     """
+    # Filter by participant user
     participant = filters.ModelChoiceFilter(
         field_name='participants',
         queryset=User.objects.all(),
-        label='Participant'
+        label='Participant User'
     )
     
-    has_unread = filters.BooleanFilter(
-        method='filter_has_unread',
-        label='Has Unread Messages'
+    # Filter by multiple participants (exact match)
+    with_users = filters.ModelMultipleChoiceFilter(
+        field_name='participants',
+        queryset=User.objects.all(),
+        label='With Users (exact match)'
     )
     
+    # Filter by conversation created after date
     created_after = filters.DateTimeFilter(
         field_name='created_at',
         lookup_expr='gte',
         label='Created After'
+    )
+    
+    # Filter by conversation updated after date
+    updated_after = filters.DateTimeFilter(
+        field_name='updated_at',
+        lookup_expr='gte',
+        label='Updated After'
     )
 
     class Meta:
