@@ -8,7 +8,8 @@ class Conversation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Conversation {self.id}"
+        participant_names = [user.username for user in self.participants.all()]
+        return f"Conversation between {', '.join(participant_names)}"
 
 class Message(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
@@ -17,5 +18,8 @@ class Message(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     is_read = models.BooleanField(default=False)
 
+    class Meta:
+        ordering = ['timestamp']
+
     def __str__(self):
-        return f"Message {self.id} from {self.sender.username}"
+        return f"Message from {self.sender.username} at {self.timestamp}"
