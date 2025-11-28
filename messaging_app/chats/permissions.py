@@ -1,5 +1,6 @@
 # chats/permissions.py
 from rest_framework import permissions
+from rest_framework.exceptions import PermissionDenied
 
 class IsParticipantOfConversation(permissions.BasePermission):
     """
@@ -12,42 +13,34 @@ class IsParticipantOfConversation(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
-        # For creating messages, check if user is participant in the conversation
-        if view.action == 'create':
-            # This will be handled in the serializer or view
-            return True
-        
         return True
 
     def has_object_permission(self, request, view, obj):
         """
-        Check if the user is a participant in the conversation
+        Check if the user is a participant in the conversation for:
+        - GET, PUT, PATCH, DELETE methods
         """
         # For Conversation objects
         if hasattr(obj, 'participants'):
-            return request.user in obj.participants.all()
+            is_participant = request.user in obj.participants.all()
+            if not is_participant:
+                raise PermissionDenied("You are not a participant in this conversation")
+            return True
         
         # For Message objects - check if user is participant in the conversation
         if hasattr(obj, 'conversation'):
-            return request.user in obj.conversation.participants.all()
-        
-        # For other objects, default to safe methods only
-        if request.method in permissions.SAFE_METHODS:
+            is_participant = request.user in obj.conversation.participants.all()
+            if not is_participant:
+                raise PermissionDenied("You are not a participant in this conversation")
+            
+            # For PUT, PATCH, DELETE - check if user is the message sender
+            if request.method in ['PUT', 'PATCH', 'DELETE']:
+                if obj.sender != request.user:
+                    raise PermissionDenied("You can only modify your own messages")
+            
             return True
         
         return False
-
-class IsMessageOwner(permissions.BasePermission):
-    """
-    Custom permission to only allow message sender to update or delete their own messages
-    """
-    def has_object_permission(self, request, view, obj):
-        # Read permissions are allowed to any participant (handled by IsParticipantOfConversation)
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        
-        # Write permissions (update, delete) are only allowed to the message sender
-        return obj.sender == request.user
 
 class IsAuthenticated(permissions.BasePermission):
     """
