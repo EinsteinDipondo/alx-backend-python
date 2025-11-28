@@ -3,11 +3,15 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import PermissionDenied
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer, ConversationCreateSerializer
 from .permissions import IsParticipantOfConversation, IsAuthenticated
+from .filters import MessageFilter, ConversationFilter
+from .pagination import MessagePagination, ConversationPagination
 
 class ConversationViewSet(viewsets.ModelViewSet):
     """
@@ -15,6 +19,12 @@ class ConversationViewSet(viewsets.ModelViewSet):
     Users can only see conversations they are participants in.
     """
     permission_classes = [IsAuthenticated, IsParticipantOfConversation]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = ConversationFilter
+    pagination_class = ConversationPagination
+    search_fields = ['participants__username', 'participants__email']
+    ordering_fields = ['created_at', 'updated_at']
+    ordering = ['-updated_at']
     
     def get_serializer_class(self):
         if self.action == 'create':
@@ -25,7 +35,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         """
         Return only conversations where the current user is a participant
         """
-        return Conversation.objects.filter(participants=self.request.user)
+        return Conversation.objects.filter(participants=self.request.user).distinct()
 
     def perform_create(self, serializer):
         """
@@ -43,20 +53,29 @@ class ConversationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def messages(self, request, pk=None):
         """
-        Custom action to get messages for a specific conversation
-        Check if user is participant using conversation_id
+        Custom action to get messages for a specific conversation with pagination and filtering
         """
         conversation = self.get_object()
         
-        # This will automatically check permissions via IsParticipantOfConversation
-        messages = conversation.messages.all().order_by('timestamp')
-        page = self.paginate_queryset(messages)
+        # Get filtered and paginated messages
+        messages = Message.objects.filter(conversation=conversation)
         
+        # Apply filtering
+        message_filter = MessageFilter(request.GET, queryset=messages)
+        filtered_messages = message_filter.qs
+        
+        # Apply ordering (newest first by default)
+        ordering = request.GET.get('ordering', '-timestamp')
+        if ordering:
+            filtered_messages = filtered_messages.order_by(ordering)
+        
+        # Paginate
+        page = self.paginate_queryset(filtered_messages)
         if page is not None:
             serializer = MessageSerializer(page, many=True)
             return self.get_paginated_response(serializer.data)
         
-        serializer = MessageSerializer(messages, many=True)
+        serializer = MessageSerializer(filtered_messages, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
@@ -99,22 +118,29 @@ class MessageViewSet(viewsets.ModelViewSet):
     """
     serializer_class = MessageSerializer
     permission_classes = [IsAuthenticated, IsParticipantOfConversation]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = MessageFilter
+    pagination_class = MessagePagination
+    search_fields = ['content', 'sender__username']
+    ordering_fields = ['timestamp', 'sender__username']
+    ordering = ['-timestamp']  # Newest messages first by default
 
     def get_queryset(self):
         """
         Return only messages from conversations where the current user is a participant
         """
         user_conversations = Conversation.objects.filter(participants=self.request.user)
-        return Message.objects.filter(conversation__in=user_conversations)
+        return Message.objects.filter(conversation__in=user_conversations).select_related('sender', 'conversation')
 
     def list(self, request, *args, **kwargs):
         """
-        Override list to allow filtering by conversation_id
+        Override list to apply custom filtering and ensure user can only see their conversations
         """
-        conversation_id = request.query_params.get('conversation_id')
+        queryset = self.filter_queryset(self.get_queryset())
         
+        # Additional security: ensure user can only filter by conversations they participate in
+        conversation_id = request.query_params.get('conversation')
         if conversation_id:
-            # Check if user is participant in this specific conversation
             try:
                 conversation = Conversation.objects.get(id=conversation_id)
                 if request.user not in conversation.participants.all():
@@ -122,14 +148,14 @@ class MessageViewSet(viewsets.ModelViewSet):
                         {'error': 'You are not a participant in this conversation'}, 
                         status=status.HTTP_403_FORBIDDEN
                     )
-                queryset = Message.objects.filter(conversation_id=conversation_id)
             except Conversation.DoesNotExist:
-                return Response(
-                    {'error': 'Conversation not found'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        else:
-            queryset = self.get_queryset()
+                pass
+        
+        # Apply the same check for participant filter
+        participant_id = request.query_params.get('participant')
+        if participant_id:
+            # Ensure the filtered conversations still only include user's conversations
+            queryset = queryset.filter(conversation__participants=self.request.user)
         
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -170,7 +196,6 @@ class MessageViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """
         Set the sender as the current user when creating a message
-        Conversation validation is already done in create() method
         """
         serializer.save(sender=self.request.user)
 
@@ -180,7 +205,6 @@ class MessageViewSet(viewsets.ModelViewSet):
         """
         message = self.get_object()
         
-        # Check if user is the sender of the message (for PUT, PATCH)
         if message.sender != request.user:
             return Response(
                 {'error': 'You can only update your own messages'}, 
@@ -195,7 +219,6 @@ class MessageViewSet(viewsets.ModelViewSet):
         """
         message = self.get_object()
         
-        # Check if user is the sender of the message (for DELETE)
         if message.sender != request.user:
             return Response(
                 {'error': 'You can only delete your own messages'}, 
@@ -208,11 +231,9 @@ class MessageViewSet(viewsets.ModelViewSet):
     def mark_read(self, request, pk=None):
         """
         Custom action to mark a message as read
-        Only participants can mark messages as read
         """
         message = self.get_object()
         
-        # Check if user is participant in the conversation
         if request.user not in message.conversation.participants.all():
             return Response(
                 {'error': 'You are not a participant in this conversation'}, 
@@ -223,3 +244,11 @@ class MessageViewSet(viewsets.ModelViewSet):
         message.save()
         
         return Response({'status': 'message marked as read'})
+
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """
+        Custom action to get count of unread messages
+        """
+        unread_count = self.get_queryset().filter(is_read=False).count()
+        return Response({'unread_count': unread_count})
