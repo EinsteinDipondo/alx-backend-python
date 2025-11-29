@@ -220,3 +220,117 @@ class OffensiveLanguageMiddleware:
             'has_offensive': len(offensive_words_found) > 0,
             'offensive_words': offensive_words_found
         }
+
+
+class RolePermissionMiddleware:
+    """
+    Middleware that checks user roles before allowing access to specific actions.
+    Only admin and moderator users can access certain endpoints.
+    """
+    
+    def __init__(self, get_response):
+        self.get_response = get_response
+        
+        # Define admin-only endpoints and actions
+        self.admin_endpoints = {
+            '/api/chats/admin/': ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+            '/api/chats/users/': ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+            '/api/chats/conversations/delete/': ['POST', 'DELETE'],
+            '/api/chats/messages/bulk_delete/': ['POST', 'DELETE'],
+            '/api/chats/reports/': ['GET', 'POST', 'PUT', 'DELETE'],
+        }
+        
+        # Define moderator endpoints (moderators can access these too)
+        self.moderator_endpoints = {
+            '/api/chats/moderator/': ['GET', 'POST', 'PUT', 'PATCH'],
+            '/api/chats/reports/': ['GET', 'POST'],
+            '/api/chats/messages/flagged/': ['GET', 'POST', 'DELETE'],
+        }
+
+    def __call__(self, request):
+        # Check if the request is for a restricted endpoint
+        restricted_endpoint = self._is_restricted_endpoint(request)
+        
+        if restricted_endpoint:
+            # Check if user is authenticated
+            if not request.user.is_authenticated:
+                return JsonResponse({
+                    'error': 'Authentication required to access this resource.'
+                }, status=401)
+            
+            # Check user role
+            if not self._has_permission(request.user, restricted_endpoint):
+                return JsonResponse({
+                    'error': 'Insufficient permissions. Admin or moderator role required.',
+                    'required_role': 'admin or moderator',
+                    'current_role': self._get_user_role(request.user)
+                }, status=403)
+        
+        # Process the request if user has permission
+        response = self.get_response(request)
+        return response
+
+    def _is_restricted_endpoint(self, request):
+        """
+        Check if the current request is for a restricted endpoint
+        """
+        current_path = request.path
+        current_method = request.method
+        
+        # Check admin endpoints
+        for endpoint, methods in self.admin_endpoints.items():
+            if current_path.startswith(endpoint) and current_method in methods:
+                return {'type': 'admin', 'endpoint': endpoint}
+        
+        # Check moderator endpoints
+        for endpoint, methods in self.moderator_endpoints.items():
+            if current_path.startswith(endpoint) and current_method in methods:
+                return {'type': 'moderator', 'endpoint': endpoint}
+        
+        return None
+
+    def _has_permission(self, user, restricted_endpoint):
+        """
+        Check if user has permission to access the restricted endpoint
+        """
+        user_role = self._get_user_role(user)
+        endpoint_type = restricted_endpoint['type']
+        
+        if endpoint_type == 'admin':
+            # Only admin users can access admin endpoints
+            return user_role == 'admin'
+        elif endpoint_type == 'moderator':
+            # Both admin and moderator users can access moderator endpoints
+            return user_role in ['admin', 'moderator']
+        
+        return False
+
+    def _get_user_role(self, user):
+        """
+        Get the user's role from the user object
+        This method can be customized based on your user model structure
+        """
+        # Method 1: Check is_staff and is_superuser (Django default)
+        if user.is_superuser:
+            return 'admin'
+        elif user.is_staff:
+            return 'moderator'
+        
+        # Method 2: Check groups
+        if user.groups.filter(name='Admin').exists():
+            return 'admin'
+        elif user.groups.filter(name='Moderator').exists():
+            return 'moderator'
+        
+        # Method 3: Check custom user profile (if you have one)
+        if hasattr(user, 'profile'):
+            return getattr(user.profile, 'role', 'user')
+        
+        # Method 4: Check permissions
+        if user.has_perm('chats.admin_access'):
+            return 'admin'
+        elif user.has_perm('chats.moderator_access'):
+            return 'moderator'
+        
+        # Default role
+        return 'user'
