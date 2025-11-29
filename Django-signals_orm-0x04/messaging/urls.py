@@ -12,9 +12,10 @@ urlpatterns = [
     path('unread/mark-all-read/', views.mark_all_as_read, name='mark_all_read'),
     path('thread/<int:thread_root_id>/mark-read/', views.mark_thread_as_read, name='mark_thread_read'),
     path('api/unread/stats/', views.unread_message_stats, name='unread_stats'),
+    path('inbox/', views.user_inbox, name='user_inbox'),
     
     # Threading URLs
-    path('conversations/', views.ConversationListView.as_view(), name='conversation_list'),
+    path('conversations/', views.conversation_list, name='conversation_list'),
     path('thread/<int:message_id>/', views.message_thread, name='message_thread'),
     path('thread/<int:message_id>/optimized/', views.message_thread_optimized, name='message_thread_optimized'),
     path('thread/<int:message_id>/recursive/', views.recursive_thread_view, name='recursive_thread'),

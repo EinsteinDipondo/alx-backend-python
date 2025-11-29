@@ -9,13 +9,14 @@ from django.views import View
 from django.views.generic import ListView, DetailView
 from django.db.models import Q, Count, Prefetch
 from django.http import JsonResponse
+from django.utils import timezone
 from .models import Message, Notification, MessageHistory, Conversation
 
 @login_required
 def unread_messages(request):
     """View to display only unread messages using the custom manager"""
     # Using the custom unread manager with optimized queries
-    unread_messages = Message.unread.for_user(request.user)
+    unread_messages = Message.unread.unread_for_user(request.user)
     
     # Get unread statistics
     unread_stats = Message.unread_stats.get_user_unread_stats(request.user)
@@ -97,7 +98,7 @@ class UnreadMessagesView(ListView):
     
     def get_queryset(self):
         """Use the custom unread manager"""
-        return Message.unread.for_user(self.request.user)
+        return Message.unread.unread_for_user(self.request.user)
     
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -105,6 +106,24 @@ class UnreadMessagesView(ListView):
         context['active_tab'] = 'unread'
         context['unread_stats'] = Message.unread_stats.get_user_unread_stats(self.request.user)
         return context
+
+@login_required
+def user_inbox(request):
+    """View to display user's inbox with unread messages highlighted"""
+    # Get all messages for the user
+    all_messages = Message.objects.get_user_inbox(request.user)
+    
+    # Get unread messages separately for highlighting
+    unread_messages = Message.unread.unread_for_user(request.user)
+    unread_message_ids = set(unread_messages.values_list('id', flat=True))
+    
+    context = {
+        'all_messages': all_messages,
+        'unread_message_ids': unread_message_ids,
+        'unread_count': Message.unread.unread_count_for_user(request.user),
+        'active_tab': 'inbox',
+    }
+    return render(request, 'messaging/user_inbox.html', context)
 
 @login_required
 def message_thread(request, message_id):
@@ -129,8 +148,8 @@ def message_thread(request, message_id):
         'edited', 'is_thread_starter'
     ).order_by('thread_depth', 'timestamp')
     
-    # Mark unread messages as read when viewing thread
-    unread_messages = Message.unread.for_user(request.user).filter(id__in=message_ids)
+    # Mark unread messages as read when viewing thread using custom manager
+    unread_messages = Message.unread.unread_for_user(request.user).filter(id__in=message_ids)
     unread_messages.update(is_read=True, read_at=timezone.now())
     
     # Build hierarchy for template
@@ -144,5 +163,23 @@ def message_thread(request, message_id):
         'participants': thread_root.get_thread_participants(),
     }
     return render(request, 'messaging/message_thread.html', context)
+
+@login_required
+def conversation_list(request):
+    """View to display user's conversations with unread counts"""
+    conversations = Conversation.objects.get_user_conversations_optimized(request.user)
+    
+    # Get unread counts for each conversation
+    for conversation in conversations:
+        conversation.unread_count = Message.unread.unread_for_user(request.user).filter(
+            parent_message=conversation
+        ).count()
+    
+    context = {
+        'conversations': conversations,
+        'total_unread': Message.unread.unread_count_for_user(request.user),
+        'active_tab': 'conversations',
+    }
+    return render(request, 'messaging/conversation_list.html', context)
 
 # ... (keep other existing views from previous implementations)
