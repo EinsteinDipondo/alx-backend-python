@@ -167,3 +167,139 @@ class MessageHistoryModelTests(TestCase):
         self.assertEqual(str(history), expected_str)
 
 # ... (keep the existing NotificationModelTests and MessageModelTests from previous implementation)
+# Add this to your messaging/tests.py
+
+class UserDeletionSignalTests(TestCase):
+    """
+    Tests specifically for the post_delete signal cleanup functionality
+    """
+    
+    def setUp(self):
+        # Create test users
+        self.user1 = User.objects.create_user(
+            username='user1', 
+            email='user1@example.com', 
+            password='testpass123'
+        )
+        self.user2 = User.objects.create_user(
+            username='user2', 
+            email='user2@example.com', 
+            password='testpass123'
+        )
+        
+        # Create comprehensive test data
+        self.message1 = Message.objects.create(
+            sender=self.user1,
+            receiver=self.user2,
+            content="Message from user1 to user2"
+        )
+        
+        self.message2 = Message.objects.create(
+            sender=self.user2,
+            receiver=self.user1,
+            content="Message from user2 to user1"
+        )
+        
+        # Create notifications
+        self.notification1 = Notification.objects.create(
+            user=self.user1,
+            message=self.message2,
+            title="Notification for user1",
+            message_content="Test content"
+        )
+        
+        self.notification2 = Notification.objects.create(
+            user=self.user2,
+            message=self.message1,
+            title="Notification for user2", 
+            message_content="Test content"
+        )
+        
+        # Create message history
+        self.message1.content = "Edited content"
+        self.message1.save()  # This creates a MessageHistory record
+        
+        # Store initial counts
+        self.initial_message_count = Message.objects.count()
+        self.initial_notification_count = Notification.objects.count()
+        self.initial_history_count = MessageHistory.objects.count()
+    
+    def test_post_delete_signal_cleans_up_sent_messages(self):
+        """Test that post_delete signal deletes messages where user was sender"""
+        sent_messages_count = Message.objects.filter(sender=self.user1).count()
+        self.assertEqual(sent_messages_count, 1)  # message1
+        
+        # Delete user1 - this should trigger the post_delete signal
+        self.user1.delete()
+        
+        # Verify sent messages are deleted
+        self.assertFalse(Message.objects.filter(sender_id=self.user1.id).exists())
+    
+    def test_post_delete_signal_cleans_up_received_messages(self):
+        """Test that post_delete signal deletes messages where user was receiver"""
+        received_messages_count = Message.objects.filter(receiver=self.user1).count()
+        self.assertEqual(received_messages_count, 1)  # message2
+        
+        # Delete user1
+        self.user1.delete()
+        
+        # Verify received messages are deleted
+        self.assertFalse(Message.objects.filter(receiver_id=self.user1.id).exists())
+    
+    def test_post_delete_signal_cleans_up_user_notifications(self):
+        """Test that post_delete signal deletes user's notifications"""
+        user_notifications_count = Notification.objects.filter(user=self.user1).count()
+        self.assertEqual(user_notifications_count, 1)  # notification1
+        
+        # Delete user1
+        self.user1.delete()
+        
+        # Verify user notifications are deleted
+        self.assertFalse(Notification.objects.filter(user_id=self.user1.id).exists())
+    
+    def test_post_delete_signal_cleans_up_message_edit_history(self):
+        """Test that post_delete signal deletes message edit history"""
+        edit_history_count = MessageHistory.objects.filter(edited_by=self.user1).count()
+        self.assertEqual(edit_history_count, 1)  # from message1 edit
+        
+        # Delete user1
+        self.user1.delete()
+        
+        # Verify edit history is deleted
+        self.assertFalse(MessageHistory.objects.filter(edited_by_id=self.user1.id).exists())
+    
+    def test_post_delete_signal_cleans_up_related_notifications(self):
+        """Test that post_delete signal cleans up notifications related to user's messages"""
+        # Count notifications related to user1's messages
+        related_notifications_count = Notification.objects.filter(
+            message__sender=self.user1
+        ).count()
+        self.assertEqual(related_notifications_count, 1)  # notification2 for message1
+        
+        # Delete user1
+        self.user1.delete()
+        
+        # Verify related notifications are deleted
+        self.assertFalse(Notification.objects.filter(message__sender_id=self.user1.id).exists())
+    
+    def test_complete_user_data_cleanup(self):
+        """Test comprehensive cleanup of all user-related data"""
+        # Store user ID before deletion
+        user1_id = self.user1.id
+        
+        # Verify data exists before deletion
+        self.assertTrue(Message.objects.filter(sender_id=user1_id).exists())
+        self.assertTrue(Message.objects.filter(receiver_id=user1_id).exists())
+        self.assertTrue(Notification.objects.filter(user_id=user1_id).exists())
+        self.assertTrue(MessageHistory.objects.filter(edited_by_id=user1_id).exists())
+        self.assertTrue(Notification.objects.filter(message__sender_id=user1_id).exists())
+        
+        # Delete user1 - this triggers the post_delete signal
+        self.user1.delete()
+        
+        # Verify ALL user-related data is cleaned up
+        self.assertFalse(Message.objects.filter(sender_id=user1_id).exists())
+        self.assertFalse(Message.objects.filter(receiver_id=user1_id).exists())
+        self.assertFalse(Notification.objects.filter(user_id=user1_id).exists())
+        self.assertFalse(MessageHistory.objects.filter(edited_by_id=user1_id).exists())
+        self.assertFalse(Notification.objects.filter(message__sender_id=user1_id).exists())
