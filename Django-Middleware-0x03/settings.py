@@ -10,6 +10,7 @@ MIDDLEWARE = [
     # ADD THESE TWO CUSTOM MIDDLEWARES:
     'chats.middleware.RestrictAccessByTimeMiddleware',
     'chats.middleware.RequestLoggingMiddleware',
+    'chats.middleware.OffensiveLanguageMiddleware',
 ]
 # Add this logging configuration at the end of settings.py:
 LOGGING = {
@@ -36,3 +37,13 @@ LOGGING = {
         },
     },
 }
+# Add cache configuration for rate limiting
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
+
+# Cache timeout (optional, defaults are fine)
+CACHE_MIDDLEWARE_SECONDS = 300
