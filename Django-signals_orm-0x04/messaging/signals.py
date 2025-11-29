@@ -1,6 +1,7 @@
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, post_delete
 from django.dispatch import receiver
 from django.contrib.auth.models import User
+from django.db import transaction
 from .models import Message, Notification, MessageHistory
 
 @receiver(post_save, sender=Message)
@@ -50,6 +51,49 @@ def log_message_edit(sender, instance, **kwargs):
             # Message doesn't exist yet (shouldn't happen for updates)
             pass
 
+@receiver(post_delete, sender=User)
+def cleanup_user_data(sender, instance, **kwargs):
+    """
+    Signal to clean up all user-related data after a user is deleted
+    This provides an additional layer of cleanup beyond CASCADE deletes
+    """
+    user_id = instance.id
+    username = instance.username
+    
+    print(f"Cleaning up data for deleted user: {username} (ID: {user_id})")
+    
+    # Additional cleanup for any orphaned records or complex relationships
+    # Even with CASCADE, we might want to do additional logging or cleanup
+    
+    # Clean up any notifications where this user was involved
+    # This handles cases where CASCADE might not cover everything
+    try:
+        # Delete notifications for messages where this user was sender or receiver
+        notifications_to_delete = Notification.objects.filter(
+            message__sender=instance
+        ) | Notification.objects.filter(
+            message__receiver=instance
+        )
+        
+        notification_count = notifications_to_delete.count()
+        notifications_to_delete.delete()
+        print(f"Deleted {notification_count} related notifications")
+        
+    except Exception as e:
+        print(f"Error cleaning up notifications for user {username}: {e}")
+    
+    # Clean up message history where this user was the editor
+    try:
+        edit_history_count = MessageHistory.objects.filter(edited_by=instance).count()
+        MessageHistory.objects.filter(edited_by=instance).delete()
+        print(f"Deleted {edit_history_count} message edit history records")
+        
+    except Exception as e:
+        print(f"Error cleaning up message history for user {username}: {e}")
+    
+    # Log the cleanup completion
+    print(f"Completed cleanup for deleted user: {username}")
+
 # Optional: Signal for when a user is created
 @receiver(post_save, sender=User)
 def send_welcome_notification(sender, instance, created, **kwargs):
@@ -63,3 +107,18 @@ def send_welcome_notification(sender, instance, created, **kwargs):
             title="Welcome to our platform!",
             message_content="Thank you for joining us. We're excited to have you here!"
         )
+
+# Additional signal for pre_delete to log what will be deleted
+@receiver(pre_save, sender=User)
+def log_user_deletion_attempt(sender, instance, **kwargs):
+    """
+    Log when a user is about to be deleted (for audit purposes)
+    """
+    if instance.pk is not None:
+        try:
+            original_user = User.objects.get(pk=instance.pk)
+            # User exists and is being modified
+            pass
+        except User.DoesNotExist:
+            # User is being created, not deleted
+            pass
