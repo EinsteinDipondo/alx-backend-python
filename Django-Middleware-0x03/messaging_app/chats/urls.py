@@ -1,8 +1,12 @@
-from django.urls import path
+# chats/urls.py
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from . import views
 
+router = DefaultRouter()
+router.register(r'conversations', views.ConversationViewSet)
+router.register(r'messages', views.MessageViewSet)
+
 urlpatterns = [
-    path('conversations/', views.conversation_list, name='conversation-list'),
-    path('messages/', views.message_list, name='message-list'),
-    path('test/', views.test_view, name='test-view'),
+    path('', include(router.urls)),
 ]
