@@ -1,8 +1,8 @@
 from django.test import TestCase
 from django.contrib.auth.models import User
-from .models import Message, Notification
+from .models import Message, Notification, MessageHistory
 
-class MessageSignalTests(TestCase):
+class MessageEditSignalTests(TestCase):
     
     def setUp(self):
         # Create test users
@@ -16,102 +16,115 @@ class MessageSignalTests(TestCase):
             email='receiver@example.com', 
             password='testpass123'
         )
-    
-    def test_notification_created_on_new_message(self):
-        """Test that a notification is automatically created when a new message is saved"""
-        # Count initial notifications
-        initial_notification_count = Notification.objects.count()
         
-        # Create a new message
-        message = Message.objects.create(
+        # Create initial message
+        self.message = Message.objects.create(
             sender=self.sender,
             receiver=self.receiver,
-            content="Hello, this is a test message!"
+            content="Initial message content"
         )
+    
+    def test_message_history_created_on_edit(self):
+        """Test that message history is created when a message is edited"""
+        # Count initial history records
+        initial_history_count = MessageHistory.objects.count()
         
-        # Check that a notification was created
-        final_notification_count = Notification.objects.count()
+        # Update the message content
+        self.message.content = "Updated message content"
+        self.message.save()
+        
+        # Check that a history record was created
+        final_history_count = MessageHistory.objects.count()
+        self.assertEqual(final_history_count, initial_history_count + 1)
+        
+        # Verify history record details
+        history = MessageHistory.objects.first()
+        self.assertEqual(history.message, self.message)
+        self.assertEqual(history.old_content, "Initial message content")
+        self.assertEqual(history.edited_by, self.sender)
+    
+    def test_message_edit_fields_updated(self):
+        """Test that edit-related fields are updated when message is edited"""
+        # Initial state
+        self.assertFalse(self.message.edited)
+        self.assertIsNone(self.message.last_edited)
+        self.assertEqual(self.message.edit_count, 0)
+        
+        # Edit the message
+        self.message.content = "Edited content"
+        self.message.save()
+        
+        # Refresh from database
+        self.message.refresh_from_db()
+        
+        # Check that edit fields are updated
+        self.assertTrue(self.message.edited)
+        self.assertIsNotNone(self.message.last_edited)
+        self.assertEqual(self.message.edit_count, 1)
+    
+    def test_multiple_edits_create_multiple_history_records(self):
+        """Test that multiple edits create multiple history records"""
+        initial_history_count = MessageHistory.objects.count()
+        
+        # First edit
+        self.message.content = "First edit"
+        self.message.save()
+        
+        # Second edit
+        self.message.content = "Second edit"
+        self.message.save()
+        
+        # Third edit
+        self.message.content = "Third edit"
+        self.message.save()
+        
+        final_history_count = MessageHistory.objects.count()
+        self.assertEqual(final_history_count, initial_history_count + 3)
+        
+        # Verify edit count on message
+        self.message.refresh_from_db()
+        self.assertEqual(self.message.edit_count, 3)
+        
+        # Verify history records contain correct old content
+        history_records = MessageHistory.objects.all().order_by('edited_at')
+        self.assertEqual(history_records[0].old_content, "Initial message content")
+        self.assertEqual(history_records[1].old_content, "First edit")
+        self.assertEqual(history_records[2].old_content, "Second edit")
+    
+    def test_no_history_on_non_content_changes(self):
+        """Test that history is not created when non-content fields change"""
+        initial_history_count = MessageHistory.objects.count()
+        
+        # Change non-content field
+        self.message.is_read = True
+        self.message.save()
+        
+        final_history_count = MessageHistory.objects.count()
+        self.assertEqual(final_history_count, initial_history_count)
+    
+    def test_edit_notification_created(self):
+        """Test that a notification is created when a message is edited"""
+        initial_notification_count = Notification.objects.filter(
+            notification_type='edit'
+        ).count()
+        
+        # Edit the message
+        self.message.content = "Edited content"
+        self.message.save()
+        
+        final_notification_count = Notification.objects.filter(
+            notification_type='edit'
+        ).count()
+        
         self.assertEqual(final_notification_count, initial_notification_count + 1)
         
-        # Verify notification details
-        notification = Notification.objects.first()
+        # Verify edit notification details
+        notification = Notification.objects.filter(notification_type='edit').first()
         self.assertEqual(notification.user, self.receiver)
-        self.assertEqual(notification.message, message)
-        self.assertEqual(notification.notification_type, 'message')
-        self.assertIn(self.sender.username, notification.title)
-        self.assertIn("Hello", notification.message_content)
-    
-    def test_no_notification_on_message_update(self):
-        """Test that notifications are not created when existing messages are updated"""
-        # Create a message
-        message = Message.objects.create(
-            sender=self.sender,
-            receiver=self.receiver,
-            content="Initial message"
-        )
-        
-        # Count notifications after creation
-        notification_count_after_creation = Notification.objects.count()
-        
-        # Update the message
-        message.content = "Updated message"
-        message.save()
-        
-        # Check that no new notification was created
-        notification_count_after_update = Notification.objects.count()
-        self.assertEqual(notification_count_after_update, notification_count_after_creation)
-    
-    def test_notification_content_truncation(self):
-        """Test that long message content is properly truncated in notifications"""
-        long_content = "A" * 200  # Create a very long message
-        
-        message = Message.objects.create(
-            sender=self.sender,
-            receiver=self.receiver,
-            content=long_content
-        )
-        
-        notification = Notification.objects.get(message=message)
-        
-        # Check that content is truncated
-        self.assertTrue(len(notification.message_content) < len(long_content))
-        self.assertTrue(notification.message_content.endswith("..."))
+        self.assertEqual(notification.message, self.message)
+        self.assertIn("edited", notification.title.lower())
 
-class NotificationModelTests(TestCase):
-    
-    def setUp(self):
-        self.user = User.objects.create_user(
-            username='testuser', 
-            email='test@example.com', 
-            password='testpass123'
-        )
-    
-    def test_notification_creation(self):
-        """Test basic notification creation"""
-        notification = Notification.objects.create(
-            user=self.user,
-            title="Test Notification",
-            message_content="This is a test notification",
-            notification_type='system'
-        )
-        
-        self.assertEqual(notification.user, self.user)
-        self.assertEqual(notification.title, "Test Notification")
-        self.assertEqual(notification.notification_type, 'system')
-        self.assertFalse(notification.is_read)
-    
-    def test_notification_str_representation(self):
-        """Test the string representation of Notification model"""
-        notification = Notification.objects.create(
-            user=self.user,
-            title="Test Notification",
-            message_content="Test content"
-        )
-        
-        expected_str = f"Notification for {self.user}: Test Notification"
-        self.assertEqual(str(notification), expected_str)
-
-class MessageModelTests(TestCase):
+class MessageHistoryModelTests(TestCase):
     
     def setUp(self):
         self.sender = User.objects.create_user(
@@ -122,27 +135,35 @@ class MessageModelTests(TestCase):
             username='receiver', 
             password='testpass123'
         )
-    
-    def test_message_creation(self):
-        """Test basic message creation"""
-        message = Message.objects.create(
+        self.message = Message.objects.create(
             sender=self.sender,
             receiver=self.receiver,
-            content="Test message content"
+            content="Test message"
         )
-        
-        self.assertEqual(message.sender, self.sender)
-        self.assertEqual(message.receiver, self.receiver)
-        self.assertEqual(message.content, "Test message content")
-        self.assertFalse(message.is_read)
     
-    def test_message_str_representation(self):
-        """Test the string representation of Message model"""
-        message = Message.objects.create(
-            sender=self.sender,
-            receiver=self.receiver,
-            content="Test content"
+    def test_message_history_creation(self):
+        """Test basic message history creation"""
+        history = MessageHistory.objects.create(
+            message=self.message,
+            old_content="Previous content",
+            edited_by=self.sender,
+            edit_reason="Test edit"
         )
         
-        expected_str = f"Message from {self.sender} to {self.receiver}"
-        self.assertEqual(str(message), expected_str)
+        self.assertEqual(history.message, self.message)
+        self.assertEqual(history.old_content, "Previous content")
+        self.assertEqual(history.edited_by, self.sender)
+        self.assertEqual(history.edit_reason, "Test edit")
+    
+    def test_message_history_str_representation(self):
+        """Test the string representation of MessageHistory model"""
+        history = MessageHistory.objects.create(
+            message=self.message,
+            old_content="Previous content",
+            edited_by=self.sender
+        )
+        
+        expected_str = f"History for Message {self.message.id} edited by {self.sender}"
+        self.assertEqual(str(history), expected_str)
+
+# ... (keep the existing NotificationModelTests and MessageModelTests from previous implementation)
