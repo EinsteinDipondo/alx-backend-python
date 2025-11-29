@@ -2,15 +2,14 @@
 import os
 from pathlib import Path
 from datetime import timedelta
-from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY', default='your-secret-key-change-in-production')
+SECRET_KEY = 'django-insecure-your-secret-key-here-change-in-production'
 
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = True
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -33,7 +32,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    # Add your custom middleware here
+    # Custom middleware - ADD THIS LINE
     'chats.middleware.RequestLoggingMiddleware',
 ]
 
@@ -85,7 +84,6 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -117,31 +115,26 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# Logging configuration
+# Logging Configuration
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
-        'verbose': {
-            'format': '{asctime} - {name} - {levelname} - {message}',
-            'style': '{',
-        },
-        'simple': {
-            'format': '{asctime} - {message}',
-            'style': '{',
+        'request_formatter': {
+            'format': '{asctime} - User: {user} - Path: {path}',
         },
     },
     'handlers': {
-        'file': {
+        'request_file': {
             'level': 'INFO',
             'class': 'logging.FileHandler',
             'filename': 'requests.log',
-            'formatter': 'simple',
+            'formatter': 'request_formatter',
         },
     },
     'loggers': {
         'request_logger': {
-            'handlers': ['file'],
+            'handlers': ['request_file'],
             'level': 'INFO',
             'propagate': False,
         },
