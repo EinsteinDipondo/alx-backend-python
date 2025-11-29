@@ -7,9 +7,10 @@ urlpatterns = [
     # Threading URLs
     path('conversations/', views.ConversationListView.as_view(), name='conversation_list'),
     path('thread/<int:message_id>/', views.message_thread, name='message_thread'),
-    path('thread/<int:pk>/detail/', views.ThreadDetailView.as_view(), name='thread_detail'),
+    path('thread/<int:message_id>/optimized/', views.message_thread_optimized, name='message_thread_optimized'),
+    path('thread/<int:message_id>/recursive/', views.recursive_thread_view, name='recursive_thread'),
     path('message/<int:message_id>/reply/', views.reply_to_message, name='reply_to_message'),
-    path('api/thread/<int:thread_root_id>/messages/', views.api_thread_messages, name='api_thread_messages'),
+    path('api/thread/<int:thread_root_id>/tree/', views.api_thread_tree, name='api_thread_tree'),
     
     # Account deletion URLs (from previous implementation)
     path('account/delete/', views.AccountDeletionView.as_view(), name='account_deletion'),
