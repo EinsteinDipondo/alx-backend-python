@@ -6,130 +6,151 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from django.utils.decorators import method_decorator
 from django.views import View
-from django.views.generic import TemplateView
-from .models import Message, Notification, MessageHistory
+from django.views.generic import ListView, DetailView
+from django.db.models import Q, Count, Prefetch
+from django.http import JsonResponse
+from .models import Message, Notification, MessageHistory, Conversation
 
 @login_required
-def delete_account_confirmation(request):
-    """View to show account deletion confirmation page"""
-    # Get statistics for user confirmation
-    sent_messages_count = Message.objects.filter(sender=request.user).count()
-    received_messages_count = Message.objects.filter(receiver=request.user).count()
-    notifications_count = Notification.objects.filter(user=request.user).count()
+def reply_to_message(request, message_id):
+    """View to handle replying to a message"""
+    parent_message = get_object_or_404(Message, id=message_id)
+    
+    # Check if user can reply to this message
+    if request.user not in [parent_message.sender, parent_message.receiver]:
+        django_messages.error(request, "You cannot reply to this message.")
+        return redirect('messaging:message_list')
+    
+    if request.method == 'POST':
+        content = request.POST.get('content')
+        if content:
+            # Create the reply
+            reply = Message.objects.create(
+                sender=request.user,
+                receiver=parent_message.sender if request.user == parent_message.receiver else parent_message.receiver,
+                content=content,
+                parent_message=parent_message
+            )
+            
+            # Create notification for the reply
+            Notification.objects.create(
+                user=reply.receiver,
+                message=reply,
+                notification_type='reply',
+                title=f"New reply from {reply.sender.username}",
+                message_content=f"{reply.sender.username} replied to your message: {reply.content[:100]}..."
+            )
+            
+            django_messages.success(request, "Reply sent successfully!")
+            return redirect('messaging:message_thread', message_id=parent_message.thread_root.id)
     
     context = {
-        'sent_messages_count': sent_messages_count,
-        'received_messages_count': received_messages_count,
-        'notifications_count': notifications_count,
+        'parent_message': parent_message,
     }
-    
-    return render(request, 'messaging/delete_account_confirmation.html', context)
+    return render(request, 'messaging/reply_to_message.html', context)
 
 @login_required
-@transaction.atomic
-def delete_user_account(request):
-    """View to handle user account deletion"""
-    if request.method == 'POST':
-        # Verify user's password for security
-        password = request.POST.get('password')
-        if not request.user.check_password(password):
-            django_messages.error(request, 'Incorrect password. Account deletion cancelled.')
-            return redirect('delete_account_confirmation')
-        
-        # Store user info for confirmation message
-        username = request.user.username
-        email = request.user.email
-        
-        # Delete the user account
-        # This will trigger the post_delete signal for cleanup
-        request.user.delete()
-        
-        # Logout the user
-        logout(request)
-        
-        # Success message
-        django_messages.success(
-            request, 
-            f'Account {username} ({email}) has been permanently deleted along with all associated data.'
-        )
-        
-        return redirect('home')
+def message_thread(request, message_id):
+    """View to display a full message thread"""
+    thread_root = get_object_or_404(Message, id=message_id)
     
-    # If not POST, redirect to confirmation page
-    return redirect('delete_account_confirmation')
-
-@login_required
-def user_data_summary(request):
-    """View to show user what data will be deleted"""
-    user = request.user
+    # Check if user can view this thread
+    if request.user not in [thread_root.sender, thread_root.receiver]:
+        django_messages.error(request, "You cannot view this conversation.")
+        return redirect('messaging:message_list')
     
-    # Get user's data statistics
-    user_data = {
-        'sent_messages': Message.objects.filter(sender=user),
-        'received_messages': Message.objects.filter(receiver=user),
-        'notifications': Notification.objects.filter(user=user),
-        'message_edits': MessageHistory.objects.filter(edited_by=user),
-    }
+    # Get all messages in the thread with optimized queries
+    thread_messages = Message.get_thread_messages(thread_root.id)
+    
+    # Mark messages as read when viewing thread
+    unread_messages = thread_messages.filter(receiver=request.user, is_read=False)
+    unread_messages.update(is_read=True)
     
     context = {
-        'sent_messages_count': user_data['sent_messages'].count(),
-        'received_messages_count': user_data['received_messages'].count(),
-        'notifications_count': user_data['notifications'].count(),
-        'message_edits_count': user_data['message_edits'].count(),
-        'recent_sent_messages': user_data['sent_messages'].order_by('-timestamp')[:5],
-        'recent_received_messages': user_data['received_messages'].order_by('-timestamp')[:5],
+        'thread_root': thread_root,
+        'thread_messages': thread_messages,
+        'participants': thread_root.get_thread_participants(),
     }
-    
-    return render(request, 'messaging/user_data_summary.html', context)
+    return render(request, 'messaging/message_thread.html', context)
 
-class AccountDeletionView(View):
-    """Class-based view for account deletion process"""
+class ConversationListView(ListView):
+    """Class-based view to display user's conversations"""
+    model = Message
+    template_name = 'messaging/conversation_list.html'
+    context_object_name = 'conversations'
+    paginate_by = 20
     
-    @method_decorator(login_required)
-    def get(self, request):
-        """Show account deletion options"""
-        return render(request, 'messaging/account_deletion.html')
+    def get_queryset(self):
+        # Use optimized query to get user's conversations
+        return Message.get_user_conversations(self.request.user)
     
-    @method_decorator(login_required)
-    def post(self, request):
-        """Handle account deletion request"""
-        action = request.POST.get('action')
-        
-        if action == 'view_data':
-            return redirect('user_data_summary')
-        elif action == 'delete_account':
-            return redirect('delete_account_confirmation')
-        else:
-            django_messages.error(request, 'Invalid action.')
-            return redirect('account_deletion')
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['active_tab'] = 'conversations'
+        return context
 
-@login_required
-def bulk_delete_messages(request):
-    """Optional: View to allow users to delete their messages before account deletion"""
-    if request.method == 'POST':
-        message_type = request.POST.get('message_type')
-        
-        with transaction.atomic():
-            if message_type == 'sent':
-                deleted_count, _ = Message.objects.filter(sender=request.user).delete()
-                django_messages.success(request, f'Deleted {deleted_count} sent messages.')
-            elif message_type == 'received':
-                deleted_count, _ = Message.objects.filter(receiver=request.user).delete()
-                django_messages.success(request, f'Deleted {deleted_count} received messages.')
-            elif message_type == 'all':
-                deleted_count, _ = Message.objects.filter(
-                    sender=request.user
-                ).delete()
-                received_count, _ = Message.objects.filter(
-                    receiver=request.user
-                ).delete()
-                django_messages.success(
-                    request, 
-                    f'Deleted all messages (sent: {deleted_count}, received: {received_count}).'
+class ThreadDetailView(DetailView):
+    """Class-based view for thread detail with optimized queries"""
+    model = Message
+    template_name = 'messaging/thread_detail.html'
+    context_object_name = 'thread_root'
+    
+    def get_queryset(self):
+        # Optimize queries for thread detail
+        return Message.objects.select_related(
+            'sender', 'receiver'
+        ).prefetch_related(
+            Prefetch(
+                'replies',
+                queryset=Message.objects.select_related('sender', 'receiver').prefetch_related(
+                    Prefetch(
+                        'replies',
+                        queryset=Message.objects.select_related('sender', 'receiver')
+                    )
                 )
-            else:
-                django_messages.error(request, 'Invalid message type.')
-        
-        return redirect('user_data_summary')
+            )
+        )
     
-    return redirect('user_data_summary')
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        thread_root = self.object
+        
+        # Get all messages in thread with optimized query
+        thread_messages = Message.get_thread_messages(thread_root.id)
+        context['thread_messages'] = thread_messages
+        context['participants'] = thread_root.get_thread_participants()
+        
+        return context
+
+@login_required
+def api_thread_messages(request, thread_root_id):
+    """API endpoint to get thread messages (for AJAX loading)"""
+    thread_root = get_object_or_404(Message, id=thread_root_id)
+    
+    if request.user not in [thread_root.sender, thread_root.receiver]:
+        return JsonResponse({'error': 'Access denied'}, status=403)
+    
+    # Get thread messages with optimized queries
+    thread_messages = Message.get_thread_messages(thread_root.id)
+    
+    # Format data for JSON response
+    messages_data = []
+    for msg in thread_messages:
+        messages_data.append({
+            'id': msg.id,
+            'sender': msg.sender.username,
+            'receiver': msg.receiver.username,
+            'content': msg.content,
+            'timestamp': msg.timestamp.isoformat(),
+            'thread_depth': msg.thread_depth,
+            'parent_id': msg.parent_message.id if msg.parent_message else None,
+            'is_read': msg.is_read,
+            'edited': msg.edited,
+        })
+    
+    return JsonResponse({
+        'thread_root': thread_root.id,
+        'messages': messages_data
+    })
+
+# ... (keep existing account deletion views from previous implementation)
