@@ -29,5 +29,5 @@ Dockerfile
 .gitignore
 
 # OS
-.DS_Store
+.DDS_Store
 Thumbs.db
