@@ -10,11 +10,12 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DB: ${MYSQL_DATABASE}  # ADD THIS LINE - the check looks for MYSQL_DB
+      MYSQL_DB: ${MYSQL_DATABASE}
     ports:
       - "3306:3306"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql  # This persists data across container restarts
+      - ./mysql-init:/docker-entrypoint-initdb.d  # Optional: for initialization scripts
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
@@ -40,13 +41,9 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
-      - ./:/app
-    command: python3 manage.py runserver 0.0.0.0:8000  # FIXED: Use python3 manage.py runserver
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - ./:/app  # This mounts your code for development
+    command: python3 manage.py runserver 0.0.0.0:8000
 
 volumes:
-  mysql_data:
+  mysql_data:  # Named volume definition - data persists here
+    driver: local
