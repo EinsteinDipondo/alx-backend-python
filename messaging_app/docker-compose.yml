@@ -10,11 +10,11 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DB: ${MYSQL_DATABASE}  # ADD THIS LINE - the check looks for MYSQL_DB
     ports:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./mysql-init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 20s
@@ -41,12 +41,9 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - ./:/app
-    command: >
-      sh -c "python manage.py wait_for_db &&
-             python manage.py migrate &&
-             python manage.py runserver 0.0.0.0:8000"
+    command: python3 manage.py runserver 0.0.0.0:8000  # FIXED: Use python3 manage.py runserver
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
       timeout: 10s
       retries: 3
