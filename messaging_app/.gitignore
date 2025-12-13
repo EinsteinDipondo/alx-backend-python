@@ -1,0 +1,26 @@
+.env
+
+# Environment files
+.env
+.env.local
+.env.prod
+
+# MySQL data
+mysql_data/
+*.sql
+
+# Docker Compose
+docker-compose.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MySQL data directory
+mysql-data/
+mysql_data/
+mysql-init/
+*.sql
+

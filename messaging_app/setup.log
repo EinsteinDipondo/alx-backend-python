@@ -1,0 +1,25 @@
+[0;34m
+=========================================
+  Kubernetes Local Cluster Setup Script  
+=========================================
+[0m
+[0;34m[INFO][0m Starting Kubernetes local cluster setup...
+
+[0;34m[INFO][0m Checking system prerequisites...
+[0;34m[INFO][0m Checking virtualization support...
+[0;32m[SUCCESS][0m Virtualization is enabled in BIOS
+./kurbeScript: line 78: free: command not found
+./kurbeScript: line 79: [: : integer expression expected
+[0;32m[SUCCESS][0m System has GB RAM
+[0;34m[INFO][0m Available disk space: 159G
+
+[0;34m[INFO][0m Checking if kubectl is installed...
+error: unknown flag: --short
+See 'kubectl version --help' for usage.
+[0;32m[SUCCESS][0m kubectl is already installed: 
+
+[0;34m[INFO][0m Checking if Docker is available...
+[0;32m[SUCCESS][0m Docker is available: 29.1.2,
+groups: cannot find name for group ID 197121
+[1;33m[WARNING][0m User is not in docker group. Adding to docker group...
+./kurbeScript: line 179: sudo: command not found

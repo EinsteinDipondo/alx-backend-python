@@ -31,3 +31,4 @@ Dockerfile
 # OS
 .DDS_Store
 Thumbs.db
+.env

@@ -12,3 +12,10 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/chats/', include('chats.urls')),
 ]
+from django.urls import path
+from . import views
+
+urlpatterns += [
+    path('health/', views.health_check, name='health_check'),
+]
+
